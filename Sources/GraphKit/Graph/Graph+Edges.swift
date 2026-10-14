@@ -342,6 +342,52 @@ extension Graph {
 ///
 	@discardableResult
 	public mutating func connect(_ source: Node, to target: Node, value: Value, at position: EdgePosition = .end) throws(GraphError) -> Edge {
+		let (sourceSlot, targetSlot, index) = try validateConnection(source, to: target, at: position)
+
+		let edge = allocateEdge(source: sourceSlot, target: targetSlot, value: value)
+		nodeRecords[sourceSlot]!.outgoing.insert(edge, at: index)
+		nodeRecords[targetSlot]!.incoming.append(edge)
+
+		appendChange(.edgeInserted(edge, source: source, target: target, index: index))
+
+		return edge
+	}
+
+/// Whether connecting one node to another would be accepted.
+///
+/// Asks exactly the questions ``connect(_:to:value:at:)`` asks before it
+/// modifies anything, so a `true` here means that connect will not throw.
+/// Use it to refuse a connection up front, such as a drop destination
+/// declining a drag, rather than attempting it and handling the error.
+///
+/// Like ``connect(_:to:value:at:)``, both nodes must already be members of
+/// the graph. A connection involving a node that is not a member is not
+/// accepted.
+///
+/// - Parameters:
+///   - source: The node the edge would leave.
+///   - target: The node the edge would arrive at.
+///   - position: The position the edge would be inserted at within the source
+///   node's ordered outgoing edges. Defaults to ``EdgePosition/end``.
+///
+/// - Returns: True if connecting the source node to the target node at the
+/// provided position would succeed.
+///
+	public func canConnect(_ source: Node, to target: Node, at position: EdgePosition = .end) -> Bool {
+		(try? validateConnection(source, to: target, at: position)) != nil
+	}
+
+/// Validates a connection against the membership of its nodes, the
+/// ``options`` describing the graph, and the position it would be inserted
+/// at, without modifying anything.
+///
+/// The single source of truth for what ``connect(_:to:value:at:)`` accepts,
+/// shared with ``canConnect(_:to:at:)`` so the two can never disagree.
+///
+/// - Returns: The slots of the source and target nodes, and the index the
+/// edge would be inserted at within the source node's outgoing edges.
+///
+	private func validateConnection(_ source: Node, to target: Node, at position: EdgePosition) throws(GraphError) -> (source: Int, target: Int, index: Int) {
 		guard let sourceSlot = nodeSlots[source] else {
 			throw GraphError.notFound(what: GraphError.node, reason: "The node is not a member of the graph.")
 		}
@@ -376,18 +422,12 @@ extension Graph {
 			}
 		}
 
-		// Resolve the position before allocating, so that an invalid position
-		// does not leave a vacated slot behind.
+		// Resolved here, before the caller allocates, so that an invalid
+		// position does not leave a vacated slot behind.
 		//
 		let index = try position.resolved(insertingInto: nodeRecords[sourceSlot]!.outgoing.count)
 
-		let edge = allocateEdge(source: sourceSlot, target: targetSlot, value: value)
-		nodeRecords[sourceSlot]!.outgoing.insert(edge, at: index)
-		nodeRecords[targetSlot]!.incoming.append(edge)
-
-		appendChange(.edgeInserted(edge, source: source, target: target, index: index))
-
-		return edge
+		return (sourceSlot, targetSlot, index)
 	}
 
 /// Disconnects an edge, removing it from both of the nodes it connects.

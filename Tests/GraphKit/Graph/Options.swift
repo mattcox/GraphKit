@@ -151,4 +151,50 @@ struct OptionTests {
 		#expect(graph.wouldCreateCycle(connecting: "a", to: "c") == false)
 		#expect(graph.wouldCreateCycle(connecting: "a", to: "unknown") == false)
 	}
+
+/// Tests that asking whether a connection would be accepted refuses exactly
+/// what connecting rejects, for every option.
+///
+	@Test("Can Connect")
+	func canConnect() throws {
+		var tree = Graph<String, Void>(nodes: ["root", "a", "b", "c"], options: .tree)
+		try tree.connect("root", to: "a")
+		try tree.connect("a", to: "b")
+
+		#expect(tree.canConnect("a", to: "a") == false)
+		#expect(tree.canConnect("root", to: "a") == false)
+		#expect(tree.canConnect("root", to: "b") == false)
+		#expect(tree.canConnect("b", to: "root") == false)
+		#expect(tree.canConnect("b", to: "c"))
+		#expect(tree.canConnect("root", to: "c"))
+
+		var unconstrained = Graph<String, Void>(nodes: ["a", "b"], options: [.allowsCycles, .allowsParallelEdges, .allowsSelfLoops, .allowsMultipleIncomingEdges])
+		try unconstrained.connect("a", to: "b")
+
+		#expect(unconstrained.canConnect("a", to: "a"))
+		#expect(unconstrained.canConnect("a", to: "b"))
+		#expect(unconstrained.canConnect("b", to: "a"))
+
+		// Asking modifies nothing.
+		//
+		#expect(tree.edgeCount == 2)
+		#expect(unconstrained.edgeCount == 1)
+	}
+
+/// Tests that a connection involving a node that is not a member of the
+/// graph, or an out of range position, is not accepted, as connecting would
+/// reject it.
+///
+	@Test("Can Connect Rejects Unknown Nodes And Positions")
+	func canConnectRejectsUnknownNodesAndPositions() throws {
+		var graph = Graph<String, Void>(nodes: ["a", "b", "c"], options: .acyclic)
+		try graph.connect("a", to: "b")
+
+		#expect(graph.canConnect("a", to: "z") == false)
+		#expect(graph.canConnect("z", to: "a") == false)
+
+		#expect(graph.canConnect("a", to: "c", at: .index(1)))
+		#expect(graph.canConnect("a", to: "c", at: .index(2)) == false)
+		#expect(graph.canConnect("a", to: "c", at: .start))
+	}
 }
